@@ -33,7 +33,13 @@ class MainActivity : AppCompatActivity() {
         updateStatusUi(AlertService.lastStatus)
 
         AlertService.connectionCallback = { message ->
-            runOnUiThread { updateConnectionStatusUi(message) }
+            runOnUiThread { 
+                updateConnectionStatusUi(message) 
+                if (message.contains("Connected", ignoreCase = true)) {
+                    val statusStr = if (cbSleepWindow.isChecked) "Asleep with open window" else "Window closed"
+                    AlertService.sendStatusMessage(statusStr)
+                }
+            }
         }
 
         AlertService.statusCallback = { message ->
