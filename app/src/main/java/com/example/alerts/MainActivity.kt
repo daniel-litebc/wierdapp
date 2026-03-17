@@ -36,7 +36,11 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread { 
                 updateConnectionStatusUi(message) 
                 if (message.contains("Connected", ignoreCase = true)) {
-                    val statusStr = if (cbSleepWindow.isChecked) "Asleep with open window" else "Window closed"
+                    val statusStr = when {
+                        cbSleepWindow.isChecked -> "Asleep with open window"
+                        cbWindow.isChecked -> "Window closed"
+                        else -> "Window is open" // Both false
+                    }
                     AlertService.sendStatusMessage(statusStr)
                 }
             }
@@ -59,8 +63,6 @@ class MainActivity : AppCompatActivity() {
         cbSleepWindow.setOnCheckedChangeListener { _, isChecked ->
             if (isChecked) {
                 cbWindow.isChecked = false
-            } else if (!cbWindow.isChecked) {
-                cbSleepWindow.isChecked = true
             }
             updateServiceState()
         }
@@ -68,8 +70,6 @@ class MainActivity : AppCompatActivity() {
         cbWindow.setOnCheckedChangeListener { _, isChecked ->
             if (isChecked) {
                 cbSleepWindow.isChecked = false
-            } else if (!cbSleepWindow.isChecked) {
-                cbWindow.isChecked = true
             }
             updateServiceState()
         }
@@ -80,7 +80,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateServiceState() {
-        val statusStr = if (cbSleepWindow.isChecked) "Asleep with open window" else "Window closed"
+        val statusStr = when {
+            cbSleepWindow.isChecked -> "Asleep with open window"
+            cbWindow.isChecked -> "Window closed"
+            else -> "Window is open" // Both false
+        }
         showStatusNotification(statusStr)
         AlertService.sendStatusMessage(statusStr)
     }
