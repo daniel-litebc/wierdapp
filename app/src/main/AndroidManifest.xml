@@ -4,7 +4,7 @@
 
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <application
         android:allowBackup="true"
@@ -27,7 +27,7 @@
 
         <service
             android:name=".AlertService"
-            android:foregroundServiceType="connectedDevice"
+            android:foregroundServiceType="dataSync"
             android:exported="false" />
 
     </application>

@@ -3,39 +3,97 @@ package com.example.alerts
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.ForegroundServiceStartNotAllowedException
 import android.app.Service
+import android.content.pm.ServiceInfo
 import android.content.Intent
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
+import android.media.MediaPlayer
+import android.os.Build
 import android.os.IBinder
 import org.eclipse.paho.client.mqttv3.*
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence
+import java.util.ArrayDeque
 import kotlin.math.sin
 
 class AlertService : Service() {
 
+    private val randomSoundNames = listOf(
+        "sound_1",
+        "sound_2",
+        "sound_3",
+        "sound_4",
+        "sound_5"
+    )
+
     companion object {
         private var client: MqttClient? = null
         private val TOPIC = "alerts_app_daniel123"
+        var lastStatus: String = "Connecting..."
         var statusCallback: ((String) -> Unit)? = null
+            set(value) {
+                field = value
+                value?.invoke(lastStatus)
+            }
 
-        fun sendAlert() {
+        var lastConnStatus: String = "Connecting..."
+        var connectionCallback: ((String) -> Unit)? = null
+            set(value) {
+                field = value
+                value?.invoke(lastConnStatus)
+            }
+        
+        fun updateStatus(msg: String) {
+            lastStatus = msg
+            statusCallback?.invoke(msg)
+        }
+        
+        fun updateConnection(msg: String) {
+            lastConnStatus = msg
+            connectionCallback?.invoke(msg)
+        }
+
+        fun sendStatusMessage(msg: String) {
             Thread {
                 try {
-                    client?.publish(TOPIC, MqttMessage("alert".toByteArray()))
-                    statusCallback?.invoke("✅ Alert sent!")
+                    client?.publish(TOPIC, MqttMessage(msg.toByteArray()))
+                    updateStatus("✅ Sent: $msg")
                 } catch (e: Exception) {
-                    statusCallback?.invoke("❌ Send failed: ${e.message}")
+                    updateStatus("❌ Send failed: ${e.message}")
                 }
             }.start()
+        }
+
+        fun sendAlert() {
+            sendStatusMessage("alert")
         }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(1, buildNotification())
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    1,
+                    buildNotification(),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                )
+            } else {
+                startForeground(1, buildNotification())
+            }
+        } catch (e: ForegroundServiceStartNotAllowedException) {
+            updateConnection("❌ Foreground start not allowed right now")
+            stopSelfResult(startId)
+            return START_NOT_STICKY
+        } catch (e: SecurityException) {
+            updateConnection("❌ Missing foreground service permission")
+            stopSelfResult(startId)
+            return START_NOT_STICKY
+        }
+
         connect()
-        return START_STICKY // restart if killed
+        return START_NOT_STICKY
     }
 
     private fun connect() {
@@ -48,13 +106,18 @@ class AlertService : Service() {
                     isCleanSession = true
                 }
                 client!!.connect(options)
-                client!!.subscribe(TOPIC) { _, _ ->
-                    playFartSound()
-                    statusCallback?.invoke("💨 ALERT!")
+                client!!.subscribe(TOPIC) { _, msg ->
+                    val payloadStr = String(msg.payload)
+                    if (payloadStr == "alert") {
+                        playRandomAlertSound()
+                        updateStatus("🔊 ALERT!")
+                    } else {
+                        updateStatus("📝 $payloadStr")
+                    }
                 }
-                statusCallback?.invoke("✅ Connected. Ready.")
+                updateConnection("✅ Connected. Ready.")
             } catch (e: Exception) {
-                statusCallback?.invoke("❌ Connection failed: ${e.message}")
+                updateConnection("❌ Connection failed: ${e.message}")
             }
         }.start()
     }
@@ -98,6 +161,39 @@ class AlertService : Service() {
         }.start()
     }
 
+    private fun playRandomAlertSound() {
+        val chosenName = randomSoundNames.random()
+        val resourceId = resources.getIdentifier(chosenName, "raw", packageName)
+
+        if (resourceId == 0) {
+            playFartSound()
+            return
+        }
+
+        val mediaPlayer = MediaPlayer.create(this, resourceId)
+        if (mediaPlayer == null) {
+            playFartSound()
+            return
+        }
+
+        val duration = mediaPlayer.duration
+        val startPos = if (duration > 5000) duration / 2 else 0
+        mediaPlayer.seekTo(startPos)
+        mediaPlayer.start()
+
+        Thread {
+            Thread.sleep(5000)
+            try {
+                if (mediaPlayer.isPlaying) {
+                    mediaPlayer.stop()
+                }
+                mediaPlayer.release()
+            } catch (e: Exception) {
+                // Ignore exceptions on release
+            }
+        }.start()
+    }
+
     private fun buildNotification(): Notification {
         val channelId = "alert_service"
         val channel = NotificationChannel(channelId, "Alert Service", NotificationManager.IMPORTANCE_LOW)
@@ -108,6 +204,26 @@ class AlertService : Service() {
             .setContentText("Listening for alerts...")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .build()
+    }
+
+    private fun showIncomingAlertNotification() {
+        val channelId = "alert_events"
+        val notificationManager = getSystemService(NotificationManager::class.java)
+        val channel = NotificationChannel(
+            channelId,
+            "Alert Events",
+            NotificationManager.IMPORTANCE_DEFAULT
+        )
+        notificationManager.createNotificationChannel(channel)
+
+        val notification = Notification.Builder(this, channelId)
+            .setContentTitle("Alerts App")
+            .setContentText("New alert received")
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setAutoCancel(true)
+            .build()
+
+        notificationManager.notify(2, notification)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
